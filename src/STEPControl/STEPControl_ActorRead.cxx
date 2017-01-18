@@ -300,9 +300,6 @@ Handle(Transfer_Binder)  STEPControl_ActorRead::Transfer
     }
   }
   // [END] Get version of preprocessor (to detect I-Deas case) (ssv; 23.11.2010)
-#ifdef DEBUG
-  puts("vejmaire:Calling Transfer SHape");
-#endif
   return TransferShape (start,TP);  
 }
 
@@ -377,9 +374,6 @@ static void getListSDR(const Handle(StepRepr_ShapeAspect)& sa,
     if(subs5.Value()->IsKind(STANDARD_TYPE(StepDimTol_GeometricTolerance)))
       return;
   }
-#ifdef DEBUG
-  puts("vejmarie: Calling getListSDR");
-#endif
   // reiterate by referred entities and take all SDRs; note that SDRs that
   // refer to sub-shapes of main SDR will be filtered out further during translation
   subs5 = graph.Sharings(sa);
@@ -415,9 +409,6 @@ static void getSDR(const Handle(StepRepr_ProductDefinitionShape)& PDS,
   Standard_Integer nbSDR0 = listSDR->Length();
   
   // Iterate by entities referring PDS
-#ifdef DEBUG
-  puts("vejmarie: Calling getSDR");
-#endif
   const Interface_Graph& graph = TP->Graph();
   Handle(StepShape_ShapeDefinitionRepresentation) NeedSDR;
   Interface_EntityIterator subs4 = graph.Sharings(PDS);
@@ -492,9 +483,6 @@ static void getSDR(const Handle(StepRepr_ProductDefinitionShape)& PDS,
   
   // Find subcomponents of assembly (NAUO)
   // and detfinitions of shape of the current product (SDR)
-#ifdef DEBUG
-  puts("vejmarie: TransferEntity");
-#endif
   Handle(TColStd_HSequenceOfTransient) listSDR = new TColStd_HSequenceOfTransient;
   Handle(TColStd_HSequenceOfTransient) listNAUO = new TColStd_HSequenceOfTransient;
   Handle(TColStd_HSequenceOfTransient) listSDRAspect = new TColStd_HSequenceOfTransient;
@@ -557,6 +545,7 @@ static void getSDR(const Handle(StepRepr_ProductDefinitionShape)& PDS,
   Standard_Integer nbComponents=0, nbShapes=0;
 
   // translate sub-assemblies
+  if ( listNAUO->Length() > 20 )
   tg.run([&]{
   for ( Standard_Integer nbNauo =1; nbNauo <= listNAUO->Length() && PS.More(); nbNauo++, PS.Next()) {
     Handle(StepRepr_NextAssemblyUsageOccurrence) NAUO = 
@@ -591,6 +580,39 @@ static void getSDR(const Handle(StepRepr_ProductDefinitionShape)& PDS,
   }
  
   });
+  else
+  for ( Standard_Integer nbNauo =1; nbNauo <= listNAUO->Length() && PS.More(); nbNauo++, PS.Next()) {
+    Handle(StepRepr_NextAssemblyUsageOccurrence) NAUO =
+      Handle(StepRepr_NextAssemblyUsageOccurrence)::DownCast(listNAUO->Value(nbNauo));
+
+#ifdef TRANSLOG
+    if (TP->TraceLevel() > 1)
+      sout<<" -- Actor : Ent.n0 "<<TP->Model()->Number(PD)<<" -> Shared Ent.no"<<TP->Model()->Number(NAUO)<<endl;
+#endif
+    Handle(Transfer_Binder) binder;
+    if (!TP->IsBound(NAUO)) binder = TransferEntity(NAUO,TP);
+    else                        binder = TP->Find(NAUO);
+
+    TopoDS_Shape theResult = TransferBRep::ShapeResult (binder);
+    if (!theResult.IsNull()) {
+      Result1 = theResult;
+      // [BEGIN] ssv: OCCT#22436: extra compound in NMSSR case
+      if (NM_DETECTED && Result1.ShapeType() == TopAbs_COMPOUND)
+      {
+        TopoDS_Iterator it(Result1);
+        for ( ; it.More(); it.Next() )
+        {
+          TopoDS_Shape aSubShape = it.Value();
+          B.Add(Cund, aSubShape);
+        }
+      }
+      else
+        B.Add(Cund, theResult);
+      // [END] ssv: OCCT#22436: extra compound in NMSSR case
+      nbComponents++;
+    }
+  }
+
 
 
   // translate shapes assigned directly
@@ -616,8 +638,6 @@ static void getSDR(const Handle(StepRepr_ProductDefinitionShape)& PDS,
 
     // record shape resulting from translation
     TopoDS_Shape theResult;
-
-    // SI ICI MARCHE
 
     if ( ! binder.IsNull() ) {
       theResult = TransferBRep::ShapeResult (binder);
@@ -663,6 +683,7 @@ static void getSDR(const Handle(StepRepr_ProductDefinitionShape)& PDS,
     }
   }
 #ifdef HAVE_TBB
+ if ( listNAUO->Length() > 20 )
  tg.wait();
 #endif
   // make a warning if both own shape and sub-assemblies are present
@@ -695,9 +716,6 @@ Handle(TransferBRep_ShapeBinder) STEPControl_ActorRead::TransferEntity(const Han
   Standard_Boolean iatrsf=Standard_False, SRRReversed=Standard_False, IsDepend=Standard_False;
   Handle(StepRepr_ShapeRepresentationRelationship) SRR;
   Interface_EntityIterator subs1 = graph.Sharings(NAUO);
-#ifdef DEBUG
-  puts("vejmarie: next assembly usage definition");
-#endif
   for (subs1.Start(); subs1.More(); subs1.Next()) {
     Handle(StepRepr_ProductDefinitionShape) PDS = 
       Handle(StepRepr_ProductDefinitionShape)::DownCast(subs1.Value());
@@ -787,9 +805,6 @@ Handle(TransferBRep_ShapeBinder) STEPControl_ActorRead::TransferEntity(const Han
     return shbinder;
   isBound = Standard_False;
   Standard_Integer nb = sr->NbItems();
-#ifdef DEBUG
-  puts("vejmarie: StepShape_ShapeRepresentation");
-#endif
   // Used in XSAlgo::AlgoContainer()->ProcessShape (ssv; 13.11.2010)
   Standard_Integer nbTPitems = TP->NbMapped();
   Handle(Message_Messenger) sout = TP->Messenger();
@@ -849,9 +864,6 @@ Handle(TransferBRep_ShapeBinder) STEPControl_ActorRead::TransferEntity(const Han
     Handle(StepRepr_RepresentationItem) anitem = sr->ItemsValue(i);
     Handle(Transfer_Binder) binder;
     if (!TP->IsBound(anitem)) {
-#ifdef DEBUG
-      puts("vejmarie: calling TransferShape");
-#endif
       binder = TransferShape(anitem, TP, isManifold);
       TopoDS_Shape theResult = TransferBRep::ShapeResult (binder);
       if (!theResult.IsNull()) {
@@ -981,9 +993,6 @@ Handle(TransferBRep_ShapeBinder) STEPControl_ActorRead::TransferEntity(const Han
     TP->AddWarning ( SRR, "SRR reverses relation defined by NAUO; NAUO definition is taken" );
   
   TopoDS_Shape theResult;
-#ifdef DEBUG
-  puts("vejmarie: StepShape_ContextDependentShapeRepresentation");
-#endif
   
   gp_Trsf Trsf;
   Standard_Boolean iatrsf = ComputeSRRWT ( SRR, TP, Trsf );
@@ -1149,9 +1158,6 @@ Handle(TransferBRep_ShapeBinder) STEPControl_ActorRead::OldWay(const Handle(Stan
   DeclareAndCast(StepShape_ShapeDefinitionRepresentation,sdr,start);
   Handle(StepRepr_Representation) rep = sdr->UsedRepresentation();
 
-#ifdef DEBUG
-  puts("vejmarie: OldWay");
-#endif
   // abv 7 Oct 99: TRJ2: skip SDRs used only for defining SHAPE_ASPECT (validation properties)
   // BUT ONLY if they have representation duplicated with other SDR,
   // (SHAPE_ASPECT also used by some systems to define geometry)
@@ -1248,9 +1254,6 @@ Handle(TransferBRep_ShapeBinder) STEPControl_ActorRead::TransferEntity(const Han
     sout << "Begin transfer STEP -> CASCADE, Type "
          << start->DynamicType()->Name() << endl;
   chrono.Start();
-#endif
-#ifdef DEBUG
-  puts("vejmarie: start");
 #endif
   
   //:S4136
@@ -1497,9 +1500,6 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
 #endif
   
   Handle(TransferBRep_ShapeBinder) shbinder;
-#ifdef DEBUG
-  puts("vejmarie: Transfer Shape");
-#endif
   
 
   // Product Definition Entities
@@ -1514,9 +1514,6 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
   else if(start->IsKind(STANDARD_TYPE(StepBasic_ProductDefinition))) {
     Handle(StepBasic_ProductDefinition) PD = 
       Handle(StepBasic_ProductDefinition)::DownCast(start);
-#ifdef DEBUG
-     puts("vejmarie: Calling TransferEntity PD");
-#endif
      shbinder = TransferEntity(PD,TP);
   }
   
@@ -1524,9 +1521,6 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
   else if (start->IsKind(STANDARD_TYPE(StepRepr_NextAssemblyUsageOccurrence))) {
     Handle(StepRepr_NextAssemblyUsageOccurrence) NAUO = 
       Handle(StepRepr_NextAssemblyUsageOccurrence)::DownCast(start);
-#ifdef DEBUG
-     puts("vejmarie: Calling TransferEntity NAUO");
-#endif
      shbinder = TransferEntity(NAUO,TP);
   }
   //end skl
@@ -1535,9 +1529,6 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
   else if (start->IsKind(STANDARD_TYPE(StepShape_ShapeRepresentation))) {
     DeclareAndCast(StepShape_ShapeRepresentation,sr,start);
     Standard_Boolean isBound = Standard_False;
-#ifdef DEBUG
-    puts("vejmarie: Calling TransferEntity Shape Representation");
-#endif
     shbinder = TransferEntity(sr,TP,isBound);
   }
   
@@ -1548,9 +1539,6 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
 
   else if (start->IsKind(STANDARD_TYPE(StepShape_ContextDependentShapeRepresentation))) {
     DeclareAndCast(StepShape_ContextDependentShapeRepresentation,CDSR,start);
-#ifdef DEBUG
-    puts("vejmarie: calling TransferEntity CDSR");
-#endif
     shbinder =  TransferEntity(CDSR,TP);
 
   }
@@ -1559,9 +1547,6 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
     //  REPRESENTATION_RELATIONSHIP et la famille
 
     DeclareAndCast(StepRepr_ShapeRepresentationRelationship,und,start);
-#ifdef DEBUG
-    puts("vejmarie: calling TransferEntity und");
-#endif
     shbinder =  TransferEntity(und,TP);
   }
 
@@ -1569,30 +1554,18 @@ Handle(Transfer_Binder) STEPControl_ActorRead::TransferShape(const Handle(Standa
     // Here starts the entity to be treated : Shape Representation Subtype
   // It can be also other Root entities
     DeclareAndCast(StepGeom_GeometricRepresentationItem,git,start);
-#ifdef DEBUG
-    puts("vejmarie: calling TransferEntity git");
-#endif
     shbinder = TransferEntity(git, TP, isManifold);
   }
   else if (start->IsKind(STANDARD_TYPE(StepRepr_MappedItem))) {
     DeclareAndCast(StepRepr_MappedItem,mapit,start);
-#ifdef DEBUG
-    puts("vejmarie: calling TransferEntity MappedItem");
-#endif
     shbinder=  TransferEntity(mapit,TP);
   }
   else if (start->IsKind(STANDARD_TYPE(StepShape_FaceSurface))) {
     DeclareAndCast(StepShape_FaceSurface,fs,start);
-#ifdef DEBUG
-    puts("vejmarie: calling TransferEntity FaceSurface");
-#endif
     shbinder =  TransferEntity(fs,TP);
   }
 
 //  if (!shbinder.IsNull()) TP->Bind(start,binder);
-#ifdef DEBUG
-  puts("Done Transfer Shape");  
-#endif
   return shbinder;
 }
 // ============================================================================
